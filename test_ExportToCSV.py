@@ -31,7 +31,6 @@ def generate_token(username, password, portal_url, referer='*'):
 
 
 class TestExportToCSV(unittest.TestCase):
-
     def setUp(self):
         # Datos para la autenticación
 
@@ -55,21 +54,22 @@ class TestExportToCSV(unittest.TestCase):
         # Cargar las capas desde ArcGIS Online
         self.test_polygon_layer = self.gis.content.get("6bc5263fdb8a4d5ead4ce5ec8b879dd7").layers[0]
         self.test_address_layer = self.gis.content.get("b20c1348cdae4878b3c73e02dd885687").layers[0]
-        self.test_out_path = "/"
+        self.test_out_path = "./CSVFilesGenerated"
         self.test_coordinate_format = "UTM"
 
     def test_script_tool_execution(self):
+        print('test_script')
         # Verifica la ejecución del script
         try:
             script_tool(self.test_polygon_layer, self.test_address_layer, self.test_out_path,
-                        self.test_coordinate_format)
+                        self.test_coordinate_format, self.username, self.password, self.url)
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"script_tool failed with error: {e}")
 
     def test_csv_creation(self):
         # Verifica la creación de CSV
-        script_tool(self.test_polygon_layer, self.test_address_layer, self.test_out_path, self.test_coordinate_format)
+        script_tool(self.test_polygon_layer, self.test_address_layer, self.test_out_path, self.test_coordinate_format, self.username, self.password, self.url)
         csv_files = os.listdir(self.test_out_path)
         self.assertGreater(len(csv_files), 0, "No CSV files created")
 
