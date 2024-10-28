@@ -58,7 +58,6 @@ class TestExportToCSV(unittest.TestCase):
         self.test_coordinate_format = "UTM"
 
     def test_script_tool_execution(self):
-        print('test_script')
         # Verifica la ejecución del script
         try:
             script_tool(self.test_polygon_layer, self.test_address_layer, self.test_out_path,
