@@ -1,5 +1,7 @@
 import arcpy
 import os, codecs
+import requests
+from arcgis.gis import GIS
 
 # Function to handle Unicode transformation
 def unicodify(row_val):
@@ -60,39 +62,34 @@ def fcl_to_csv(fcl, csv_path, utm):
 
 
 # Main function to execute the tool
-def script_tool(polygon_layer, address_layer, out_path, coordinate_format):
-    """
-    Main script tool function to handle input parameters and export to CSV.
-    :param polygon_layer: Input polygon feature layer
-    :param address_layer: Input address feature layer
-    :param out_path: Output directory for CSV files
-    :param coordinate_format: Coordinate format (e.g., UTM or other)
-    """
+def script_tool(polygon_layer, address_layer, out_path, coordinate_format, username, password, url_portal):
     try:
-        # Convert coordinate format to boolean for UTM projection
+        arcpy.SignInToPortal(url_portal, username, password)
+        arcpy.AddMessage("Autenticación exitosa ")
+
         convert_utm = coordinate_format.lower() == "utm"
 
-        # Collect selected object IDs from the polygon layer
+        temp_polygon_layer = arcpy.MakeFeatureLayer_management(polygon_layer.url, "temp_polygon_layer")
+        temp_address_layer = arcpy.MakeFeatureLayer_management(address_layer.url, "temp_address_layer")
+
         oids = []
         with arcpy.da.SearchCursor(polygon_layer, ["*"]) as cursor:
             for row in cursor:
                 oids.append(row[0])
 
-        # Process each selected polygon
+        print('oids', oids)
+
         for oid in oids:
-            arcpy.SelectLayerByAttribute_management(polygon_layer, "NEW_SELECTION", f"objectid = {oid}")
-            with arcpy.da.SearchCursor(polygon_layer, ["name", "id"]) as polygon_cursor:
+            arcpy.SelectLayerByAttribute_management(temp_polygon_layer, "NEW_SELECTION", f"objectid = {oid}")
+            with arcpy.da.SearchCursor(temp_polygon_layer, ["name", "objectid"]) as polygon_cursor:
                 for row in polygon_cursor:
                     filename = f"{row[0]}_{row[1]}.csv"
                     filepath = os.path.join(out_path, filename)
                     arcpy.AddMessage(f"Creating {filepath}...")
 
-                    # Select address points within the current polygon
-                    arcpy.SelectLayerByLocation_management(address_layer, "WITHIN", polygon_layer)
-                    
-                    # Export the address layer to CSV
-                    fcl_to_csv(address_layer, filepath, convert_utm)
-        
+                    arcpy.SelectLayerByLocation_management(temp_address_layer, "WITHIN", temp_polygon_layer)
+                    fcl_to_csv(temp_address_layer, filepath, convert_utm)
+
         arcpy.AddMessage("Export completed successfully.")
     except Exception as e:
         arcpy.AddError(f"Error in script execution: {e}")
@@ -105,6 +102,9 @@ if __name__ == "__main__":
     address_layer = arcpy.GetParameterAsText(1)
     out_path = arcpy.GetParameterAsText(2)
     coordinate_format = arcpy.GetParameterAsText(3)
+    username = arcpy.GetParameterAsText(4)
+    password = arcpy.GetParameterAsText(5)
+    url_portal = arcpy.GetParameterAsText(6)
 
     # Execute the script tool
-    script_tool(polygon_layer, address_layer, out_path, coordinate_format)
+    script_tool(polygon_layer, address_layer, out_path, coordinate_format, username, password, url_portal)
