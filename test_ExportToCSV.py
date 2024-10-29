@@ -31,7 +31,6 @@ def generate_token(username, password, portal_url, referer='*'):
 
 
 class TestExportToCSV(unittest.TestCase):
-
     def setUp(self):
         # Datos para la autenticación
 

@@ -66,7 +66,7 @@ def script_tool(polygon_layer, address_layer, out_path, coordinate_format, usern
     try:
         arcpy.SignInToPortal(url_portal, username, password)
         arcpy.AddMessage("Autenticación exitosa ")
-
+        
         convert_utm = coordinate_format.lower() == "utm"
 
         temp_polygon_layer = arcpy.MakeFeatureLayer_management(polygon_layer.url, "temp_polygon_layer")
@@ -93,7 +93,6 @@ def script_tool(polygon_layer, address_layer, out_path, coordinate_format, usern
         arcpy.AddMessage("Export completed successfully.")
     except Exception as e:
         arcpy.AddError(f"Error in script execution: {e}")
-
 
 # Entry point for script execution
 if __name__ == "__main__":
