@@ -88,7 +88,7 @@ def project_utm(shape, row):
         csv_row = row[:-1] + (x, y)
     return csv_row
 
-def fcl_to_csv(fcl, csv_path, fields):
+def fcl_to_csv(fcl, csv_path, fields, custom_names):
     global coord_format   # Use global variables directly
     try:
         # Combine fields for the cursor, including geometry
@@ -112,7 +112,7 @@ def fcl_to_csv(fcl, csv_path, fields):
 
         # Open the CSV file for writing
         with codecs.open(csv_path, "w", encoding="UTF-8") as f:
-            header_fields = fields[:-1] + ["X", "Y"]
+            header_fields = custom_names[:-1] + ["X", "Y"]
             f.write(";".join(header_fields) + os.linesep)  # CSV header
             # Process rows with `SearchCursor`
             with arcpy.da.SearchCursor(fcl, fields) as cursor:
@@ -139,8 +139,7 @@ def fcl_to_csv(fcl, csv_path, fields):
                 arcpy.Delete_management("in_memory\\temp_reprojected_layer")
 
 # Main function to execute the tool
-def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_format, out_dir,
-                 use_auth, url_portal, username, password):
+def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_format, out_dir, use_auth, url_portal, username, password, custom_names):
 
     global field_we, field_ge, coord_format
     field_we = fld_we
@@ -174,26 +173,21 @@ def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_for
 
         output_files = []
         for oid in oids:
-            arcpy.SelectLayerByAttribute_management("temp_polygon_layer", "NEW_SELECTION",
-                                                    f"{oid_polygon_field} = {oid}")
+            arcpy.SelectLayerByAttribute_management("temp_polygon_layer", "NEW_SELECTION", f"{oid_polygon_field} = {oid}")
 
-            polygon_data = [(row[0], row[1]) for row in
-                            arcpy.da.SearchCursor("temp_polygon_layer",
-                                                  [field_name, oid_polygon_field])]
+            polygon_data = [(row[0], row[1]) for row in arcpy.da.SearchCursor("temp_polygon_layer", [field_name, oid_polygon_field])]
 
             for name, objectid in polygon_data:
                 if not name:
                     raise ValueError("the values from polygon layer field name can not empty.")
                 filename = f"{name}_{objectid}.csv"
-                filepath = os.path.join(out_dir, filename) if not IS_SERVER else generate_unique_filename(filename,
-                                                                                                          "csv")
-                arcpy.SelectLayerByLocation_management("temp_address_layer",
-                                                       "WITHIN", "temp_polygon_layer")
+                filepath = os.path.join(out_dir, filename) if not IS_SERVER else generate_unique_filename(filename, "csv")
+                arcpy.SelectLayerByLocation_management("temp_address_layer", "WITHIN", "temp_polygon_layer")
                 # Check if temp_address_layer has selected records
                 count = int(arcpy.GetCount_management("temp_address_layer").getOutput(0))
                 if count > 0:
                     arcpy.AddMessage(f"Creating {filepath}, total addresses={count}")
-                    fcl_to_csv("temp_address_layer", filepath, fields)
+                    fcl_to_csv("temp_address_layer", filepath, fields, custom_names)
                     output_files.append(filepath)
 
         # Handle unique filename for server environment
@@ -216,23 +210,45 @@ def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_for
         if arcpy.Exists("temp_address_layer"):
             arcpy.Delete_management("temp_address_layer")
 
+def transform_field_address_names(field_address_names):
+    pairs = field_address_names.split(';')
+
+    field_address = []
+    custom_names = []
+
+    for pair in pairs:
+        elements = pair.split(" ", 1)
+        if len(elements) == 2:
+            field = elements[0]
+            name = elements[1].strip() 
+            if name.startswith("'") and name.endswith("'"):
+                name = name[1:-1] 
+
+            field_address.append(field)
+            custom_names.append(name)
+
+    return field_address, custom_names
+
+
 # Entry point for script execution
 if __name__ == "__main__":
     # Retrieve parameters as global variables
     polygon_layer = arcpy.GetParameter(0)
     field_name = arcpy.GetParameterAsText(1)
     address_layer = arcpy.GetParameter(2)
-    field_we = arcpy.GetParameterAsText(3)
-    field_ge = arcpy.GetParameterAsText(4)
-    field_address = [field.value for field in arcpy.GetParameter(5)] # Assumes multi-value list parameter
-    coord_format = arcpy.GetParameterAsText(6)
-    out_folder = arcpy.GetParameterAsText(7)
-    use_auth = arcpy.GetParameterAsText(8).lower() == 'true'
-    url_portal = arcpy.GetParameterAsText(9)
-    username = arcpy.GetParameterAsText(10)
-    password = arcpy.GetParameterAsText(11)
+    fields_we_ge = arcpy.GetParameterAsText(3).lower() == 'true'
+    field_we = arcpy.GetParameterAsText(4)
+    field_ge = arcpy.GetParameterAsText(5)
+    field_address_names = str(arcpy.GetParameter(6)) # Assumes value-table parameter
+    coord_format = arcpy.GetParameterAsText(7)
+    out_folder = arcpy.GetParameterAsText(8)
+    use_auth = arcpy.GetParameterAsText(9).lower() == 'true'
+    url_portal = arcpy.GetParameterAsText(10)
+    username = arcpy.GetParameterAsText(11)
+    password = arcpy.GetParameterAsText(12)
+    field_address, custom_names = transform_field_address_names(field_address_names)
     # Output for the CSV download
 
     # Execute the script tool
     script_tool(polygon_layer, field_name, address_layer, field_we, field_ge, field_address, coord_format, out_folder,
-                use_auth, url_portal, username, password)
+                use_auth, url_portal, username, password, custom_names)

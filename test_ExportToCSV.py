@@ -3,8 +3,7 @@ import unittest
 import arcpy
 import os
 import requests
-from ExportToCSV import script_tool
-
+from ExportToCSV import script_tool, transform_field_address_names
 
 class TestExportToCSV(unittest.TestCase):
     def setUp(self):
@@ -40,13 +39,18 @@ class TestExportToCSV(unittest.TestCase):
             field.name for field in arcpy.ListFields("temp_test_address_lyr") if
             field.name not in [self.field_we, self.field_ge]
         ]
+        self.field_address_names = arcpy.ValueTable(2)
+        for field, name in zip(self.fields_address_layer, self.fields_address_layer):
+            self.field_address_names.addRow(f"{field} {name}")
+
+        self.field_address, self.custom_names = transform_field_address_names(str(self.field_address_names))
 
     def test_script_tool_execution(self):
         # Verifica la ejecución del script
         try:
             script_tool("temp_test_polygon_lyr", self.field_name_poly_layer, "temp_test_address_lyr",
-                        self.field_we, self.field_ge, self.fields_address_layer, self.test_coordinate_format,
-                        self.test_out_path, False, None, None, None)
+                        self.field_we, self.field_ge, self.field_address, self.test_coordinate_format,
+                        self.test_out_path, False, None, None, None, self.custom_names)
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"script_tool failed with error: {e}")
@@ -54,8 +58,8 @@ class TestExportToCSV(unittest.TestCase):
     def test_csv_creation(self):
         # Verifica la creación de CSV
         script_tool("temp_test_polygon_lyr", self.field_name_poly_layer, "temp_test_address_lyr",
-                    self.field_we, self.field_ge, self.fields_address_layer, self.test_coordinate_format,
-                    self.test_out_path, False, None, None, None)
+                    self.field_we, self.field_ge, self.field_address, self.test_coordinate_format,
+                    self.test_out_path, False, None, None, None, self.custom_names)
         csv_files = os.listdir(self.test_out_path)
         self.assertGreater(len(csv_files), 0, "No CSV files created")
 
@@ -63,7 +67,6 @@ class TestExportToCSV(unittest.TestCase):
         # Opcional: limpiar archivos CSV generados
         for file in os.listdir(self.test_out_path):
             os.remove(os.path.join(self.test_out_path, file))
-
 
 if __name__ == '__main__':
     unittest.main()
