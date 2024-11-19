@@ -196,7 +196,7 @@ def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_for
             zip_path = generate_unique_filename("zip")
             create_zip_from_files(output_files, zip_path)
             # Set the ZIP file as output for download
-            arcpy.SetParameterAsText(12, zip_path)
+            arcpy.SetParameterAsText(13, zip_path)
 
         arcpy.AddMessage("Export completed successfully.")
 
