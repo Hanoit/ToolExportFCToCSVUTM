@@ -34,16 +34,16 @@ def validate_fields(layer, fields):
 
 def generate_unique_filename(name_str, extension="zip"):
     if name_str:
-        unique_name = f"{name_str}_{uuid.uuid4()}.{extension}"
+        unique_name = "{}_{}.{}".format(name_str, uuid.uuid4(), extension)
     else:
-        unique_name = f"{uuid.uuid4()}.{extension}"
+        unique_name = "{}.{}".format(uuid.uuid4(), extension)
     return os.path.join(arcpy.env.scratchFolder, unique_name)
 
 def create_zip_from_files(files, zip_path):
     with zipfile.ZipFile(zip_path, 'w') as zipf:
         for file in files:
             zipf.write(file, os.path.basename(file))  # Add files to the zip with their basename
-    arcpy.AddMessage(f"Created ZIP archive: {zip_path}")
+    arcpy.AddMessage("Created ZIP archive: {}".format(zip_path))
 
 def project_to_utm(shape):
     # Determine the output spatial reference based on the X-coordinate of the geometry
@@ -104,8 +104,10 @@ def fcl_to_csv(fcl, csv_path, fields, custom_names):
         # Project data to WGS84 if UTM projection is needed and original is not WGS84
         if coord_format.lower().startswith('utm'):
             temp_fc = "in_memory\\temp_fc"
+            # temp_fc = os.path.join(arcpy.env.scratchGDB, "temp_fc")
             arcpy.CopyFeatures_management(fcl, temp_fc)
             temp_layer = "in_memory\\temp_reprojected_layer"
+            # temp_layer = os.path.join(arcpy.env.scratchGDB, "temp_layer")
             arcpy.Project_management(temp_fc, temp_layer, arcpy.SpatialReference(4326))
             arcpy.AddMessage("Layer reprojected to WGS 1984 for UTM determination.")
             fcl = temp_layer
@@ -132,62 +134,87 @@ def fcl_to_csv(fcl, csv_path, fields, custom_names):
         arcpy.AddError(full_traceback)
     finally:
         # Clean up in-memory data if created
-        if coord_format.startswith('utm'):
-            if arcpy.Exists("in_memory\\temp_fc"):
-                arcpy.Delete_management("in_memory\\temp_fc")
-            if arcpy.Exists("in_memory\\temp_reprojected_layer"):
-                arcpy.Delete_management("in_memory\\temp_reprojected_layer")
+        if arcpy.Exists("in_memory\\temp_fc"):
+            arcpy.Delete_management("in_memory\\temp_fc")
+        if arcpy.Exists("in_memory\\temp_reprojected_layer"):
+            arcpy.Delete_management("in_memory\\temp_reprojected_layer")
+
+        # if arcpy.Exists(temp_fc):
+        #     arcpy.Delete_management(temp_fc)
+        # if arcpy.Exists(temp_layer):
+        #     arcpy.Delete_management(temp_layer)
 
 # Main function to execute the tool
-def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_format, out_dir, use_auth, url_portal, username, password, custom_names):
+def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_format, out_dir, use_auth, url_portal, username, password, custom_names, selected_polygon):
 
-    global field_we, field_ge, coord_format
+    global field_we, field_ge, coord_format, selected_polygons
     field_we = fld_we
     field_ge = fld_ge
     coord_format = xy_format
+    selected_polygons = selected_polygon
 
     try:
-        # Authentication check
+        # Autenticación check
         if use_auth or not arcpy.GetSigninToken() and url_portal and username and password:
-                arcpy.SignInToPortal(url_portal, username, password)
-                arcpy.AddMessage("Authenticated with provided credentials.")
+            arcpy.SignInToPortal(url_portal, username, password)
+            arcpy.AddMessage("Authenticated with provided credentials.")
         elif arcpy.GetSigninToken():
             arcpy.AddMessage("Authenticated with existing session.")
         else:
             raise ValueError("No authenticated session found and no credentials provided.")
+        
+        address_layer_name = "temp_address_layer"
+        polygon_layer_name = "temp_polygon_layer"
 
-        # Create feature layers if needed
-        if not arcpy.Exists("temp_polygon_layer"):
-            arcpy.MakeFeatureLayer_management(poly_lyr, "temp_polygon_layer")
-        if not arcpy.Exists("temp_address_layer"):
-            arcpy.MakeFeatureLayer_management(addr_lyr, "temp_address_layer")
+        # Verificar capas originales
+        if not arcpy.Exists(poly_lyr):
+            raise ValueError("La capa de polígonos proporcionada no existe o no es válida.")
+        if not arcpy.Exists(addr_lyr):
+            raise ValueError("La capa de direcciones proporcionada no existe o no es válida.")
+
+        # Crear capas temporales
+        arcpy.MakeFeatureLayer_management(poly_lyr, polygon_layer_name)
+        arcpy.MakeFeatureLayer_management(addr_lyr, address_layer_name)
+        oid_field = get_objectid_field_name(polygon_layer_name)
+
+        # Manejar selección de polígonos
+        if selected_polygons:
+            # Filtrar por los ObjectIDs proporcionados
+            selection_query = f"{oid_field} IN ({', '.join(map(str, selected_polygons))})"
+            arcpy.SelectLayerByAttribute_management(polygon_layer_name, "NEW_SELECTION", selection_query)
+            arcpy.AddMessage(f"Filtered polygon layer to selected OIDs: {selected_polygons}")
+        else:
+            # Si no hay selección previa, obtener todos los ObjectIDs de la capa
+            with arcpy.da.SearchCursor(polygon_layer_name, [oid_field]) as cursor:
+                selected_polygons = [row[0] for row in cursor]
+            selection_query = f"{oid_field} IN ({', '.join(map(str, selected_polygons))})"
+            arcpy.SelectLayerByAttribute_management(polygon_layer_name, "NEW_SELECTION", selection_query)
+            arcpy.AddMessage(f"No polygons explicitly selected. Using all polygons: {selected_polygons}")
 
         fields = fld_addr + [fld_we, fld_ge] if (field_ge and field_we) else fld_addr
-        # Validate that fields exist in ADDRESS_LAYER
-        if not validate_fields("temp_address_layer", fields):
+
+        # Validar campos en la capa de direcciones
+        if not validate_fields(address_layer_name, fields):
             raise ValueError("Some required fields do not exist in the address layer.")
 
-        oid_polygon_field = get_objectid_field_name("temp_polygon_layer")
-        # Obtain unique OIDs to reduce processing time
-        oids = [row[0] for row in arcpy.da.SearchCursor("temp_polygon_layer", [oid_polygon_field])]
-
         output_files = []
-        for oid in oids:
-            arcpy.SelectLayerByAttribute_management("temp_polygon_layer", "NEW_SELECTION", f"{oid_polygon_field} = {oid}")
 
-            polygon_data = [(row[0], row[1]) for row in arcpy.da.SearchCursor("temp_polygon_layer", [field_name, oid_polygon_field])]
-
-            for name, objectid in polygon_data:
-                if not name:
-                    raise ValueError("the values from polygon layer field name can not empty.")
-                filename = f"{name}_{objectid}.csv"
+        # Iterar sobre cada polígono seleccionado
+        with arcpy.da.SearchCursor(polygon_layer_name, [field_name]) as cursor:
+            for row in cursor:
+                polygon_name = row[0]
+                if not polygon_name:
+                    raise ValueError("The values from polygon layer field name cannot be empty.")
+                
+                filename = f"{polygon_name}.csv"
                 filepath = os.path.join(out_dir, filename) if not IS_SERVER else generate_unique_filename(filename, "csv")
-                arcpy.SelectLayerByLocation_management("temp_address_layer", "WITHIN", "temp_polygon_layer")
-                # Check if temp_address_layer has selected records
-                count = int(arcpy.GetCount_management("temp_address_layer").getOutput(0))
+
+                arcpy.SelectLayerByLocation_management(address_layer_name, "WITHIN", polygon_layer_name)
+                count = int(arcpy.GetCount_management(address_layer_name).getOutput(0))
+
                 if count > 0:
                     arcpy.AddMessage(f"Creating {filepath}, total addresses={count}")
-                    fcl_to_csv("temp_address_layer", filepath, fields, custom_names)
+                    fcl_to_csv(address_layer_name, filepath, fields, custom_names)
                     output_files.append(filepath)
 
         # Handle unique filename for server environment
@@ -202,13 +229,12 @@ def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_for
 
     except Exception as e:
         arcpy.AddError(f"Error in script execution: {e}")
-        full_traceback = traceback.format_exc()
-        arcpy.AddError(full_traceback)
+        arcpy.AddError(traceback.format_exc())
     finally:
-        if arcpy.Exists("temp_polygon_layer"):
-            arcpy.Delete_management("temp_polygon_layer")
-        if arcpy.Exists("temp_address_layer"):
-            arcpy.Delete_management("temp_address_layer")
+        if arcpy.Exists(polygon_layer_name):
+            arcpy.Delete_management(polygon_layer_name)
+        if arcpy.Exists(address_layer_name):
+            arcpy.Delete_management(address_layer_name)
 
 def transform_field_address_names(field_address_names):
     pairs = field_address_names.split(';')
@@ -246,9 +272,12 @@ if __name__ == "__main__":
     url_portal = arcpy.GetParameterAsText(10)
     username = arcpy.GetParameterAsText(11)
     password = arcpy.GetParameterAsText(12)
+    selected_polygon = arcpy.GetParameterAsText(14)
     field_address, custom_names = transform_field_address_names(field_address_names)
     # Output for the CSV download
 
+    arcpy.AddMessage('selected_polygon: ' + selected_polygon)
+
     # Execute the script tool
     script_tool(polygon_layer, field_name, address_layer, field_we, field_ge, field_address, coord_format, out_folder,
-                use_auth, url_portal, username, password, custom_names)
+                use_auth, url_portal, username, password, custom_names, selected_polygon)

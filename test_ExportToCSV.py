@@ -17,8 +17,8 @@ class TestExportToCSV(unittest.TestCase):
         if not arcpy.GetSigninToken():
             self.fail("Portal authentication failed")
 
-        self.test_polygon_layer = "https://portal.beexact.com/server/rest/services/geodata_editor_beeXact_Polygons_BeeXact_EDIT/FeatureServer/695"
-        self.test_address_layer = "https://portal.beexact.com/server/rest/services/geodata_editor_beeXact_Addresses_MIH/FeatureServer/1240"
+        self.test_polygon_layer = "https://portal.beexact.com/server/rest/services/Hosted/geodata_editor_beeXact_Polygons_Hosted/FeatureServer/992"
+        self.test_address_layer = "https://portal.beexact.com/server/rest/services/BeeXact_Addresses_FEX/FeatureServer/1268"
 
         arcpy.MakeFeatureLayer_management(self.test_polygon_layer, "temp_test_polygon_lyr")
         arcpy.MakeFeatureLayer_management(self.test_address_layer, "temp_test_address_lyr")
@@ -50,7 +50,7 @@ class TestExportToCSV(unittest.TestCase):
         try:
             script_tool("temp_test_polygon_lyr", self.field_name_poly_layer, "temp_test_address_lyr",
                         self.field_we, self.field_ge, self.field_address, self.test_coordinate_format,
-                        self.test_out_path, False, None, None, None, self.custom_names)
+                        self.test_out_path, False, None, None, None, self.custom_names, [23321])
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"script_tool failed with error: {e}")
