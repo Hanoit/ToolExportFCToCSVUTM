@@ -179,8 +179,12 @@ def script_tool(poly_lyr, field_name, addr_lyr, fld_we, fld_ge, fld_addr, xy_for
 
         # Manejar selección de polígonos
         if selected_polygons:
-            # Filtrar por los ObjectIDs proporcionados
+            # Convertir y limpiar los valores en una sola línea
+            selected_polygons = [str(int(oid.strip())) for oid in selected_polygons.split(',') if oid.strip().isdigit()]
+
+
             selection_query = f"{oid_field} IN ({', '.join(map(str, selected_polygons))})"
+            arcpy.AddMessage('selection_query: ' + selection_query)
             arcpy.SelectLayerByAttribute_management(polygon_layer_name, "NEW_SELECTION", selection_query)
             arcpy.AddMessage(f"Filtered polygon layer to selected OIDs: {selected_polygons}")
         else:
